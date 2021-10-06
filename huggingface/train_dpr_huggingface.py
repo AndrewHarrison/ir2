@@ -4,15 +4,18 @@ import os
 import argparse
 import json
 import random
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import LambdaLR
+from torch.utils.data import DataLoader
 from transformers import BertTokenizer, DistilBertTokenizer, ElectraTokenizer
+from datasets import Dataset
+
+# Own imports
 from custom_dpr import DPRQuestionEncoder, DPRContextEncoder
 from combined_dpr_model import DPR
-
-# DEBUG
-sys.stdout.reconfigure(encoding='utf-8')
 
 # Index for models
 model_index = {
@@ -20,6 +23,59 @@ model_index = {
     'distilbert': ('distilbert-base-uncased', DistilBertTokenizer),
     'electra': ('google/electra-small-discriminator', ElectraTokenizer)
 }
+
+
+def preprocess_dataset(dataset_instance, question_tokenizer, context_tokenizer):
+    """
+    Function for tokenizing the dataset, used with Huggingface map function.
+    Inputs:
+        dataset_instance - Instance from the Huggingface dataset
+        question_tokenizer - Tokenizer instance to use for encoding the questions
+        context_tokenizer - Tokenizer instance to use for encoding the contexts
+        dataset - HuggingFace dataset instance containing the data
+    Outputs:
+        dataset_instance - HuggingFace dataset instance augmented with encodings
+    """
+
+    # Encode the question
+    question_inputs = question_tokenizer(
+        dataset_instance['question'],
+        padding='max_length',
+        truncation=True,
+        return_tensors='pt',
+    )
+    question_ids = question_inputs['input_ids'].squeeze()
+    question_mask = question_inputs['attention_mask'].squeeze()
+
+    # Encode the gold context
+    gold_inputs = context_tokenizer(
+        dataset_instance['gold_context'],
+        padding='max_length',
+        truncation=True,
+        return_tensors='pt',
+    )
+    gold_ids = gold_inputs['input_ids'].squeeze()
+    gold_mask = gold_inputs['attention_mask'].squeeze()
+
+    # Encode the negative context
+    neg_inputs = context_tokenizer(
+        dataset_instance['neg_context'],
+        padding='max_length',
+        truncation=True,
+        return_tensors='pt',
+    )
+    neg_ids = neg_inputs['input_ids'].squeeze()
+    neg_mask = neg_inputs['attention_mask'].squeeze()
+
+    # Return the new columns
+    return {
+        'question_ids': question_ids,
+        'question_mask': question_mask,
+        'gold_context_ids': gold_ids,
+        'gold_context_mask': gold_mask,
+        'neg_context_ids': neg_ids,
+        'neg_context_mask': neg_mask
+    }
 
 
 def load_dataset(args, path):
@@ -58,161 +114,69 @@ def load_dataset(args, path):
                 neg_contexts.append(instance['negative_ctxs'][0]['text'])
             else:
                 neg_contexts.append(instance['negative_ctxs'][0]['title'] + ' ' + instance['negative_ctxs'][0]['text'])
+    
+    # Create a pandas DataFrame from the dataset
+    df = pd.DataFrame(list(zip(questions, gold_contexts, neg_contexts)), columns=['question', 'gold_context', 'neg_context'])
 
-    # Return the questions, gold contexts and negative contexts
-    return questions, gold_contexts, neg_contexts
+    # Create Huggingface Dataset from the dataframe
+    dataset = Dataset.from_pandas(df)
 
-
-def shuffle_data(train_query_encodings, train_gold_context_encodings, train_neg_context_encodings):
-    """
-    Function that shuffles the training data.
-    Inputs:
-        train_query_encodings - Encodings of the training queries
-        train_gold_context_encodings - Encodings of the training gold contexts
-        train_neg_context_encodings - Encodings of the training negative contexts
-    Outputs:
-        shuffled_query_encodings - Shuffled encodings of the training queries
-        shuffled_gold_encodings - Shuffled encodings of the training gold contexts
-        shuffled_neg_encodings - Shuffled encodings of the training negative contexts
-    """
-
-    shuffled_query_encodings = {}
-    shuffled_gold_encodings = {}
-    shuffled_neg_encodings = {}
-
-    # Get all the attributes
-    query_input_ids = train_query_encodings.input_ids
-    query_attention_mask = train_query_encodings.attention_mask
-
-    gold_context_input_ids = train_gold_context_encodings.input_ids
-    gold_context_attention_mask = train_gold_context_encodings.attention_mask
-
-    neg_context_input_ids = train_neg_context_encodings.input_ids
-    neg_context_attention_mask = train_neg_context_encodings.attention_mask
-
-    # Generate a random ordering
-    idx = torch.randperm(query_input_ids.size()[0])
-
-    # Order the data with the new ordering
-    shuffled_query_encodings['input_ids'] = query_input_ids[idx]
-    shuffled_query_encodings['attention_mask'] = query_attention_mask[idx]
-
-    shuffled_gold_encodings['input_ids'] = gold_context_input_ids[idx]
-    shuffled_gold_encodings['attention_mask'] = gold_context_attention_mask[idx]
-
-    shuffled_neg_encodings['input_ids'] = neg_context_input_ids[idx]
-    shuffled_neg_encodings['attention_mask'] = neg_context_attention_mask[idx]
-
-    # Return the shuffled data
-    return shuffled_query_encodings, shuffled_gold_encodings, shuffled_neg_encodings
+    # Return the dataset
+    return dataset
 
 
-def get_batch(device, num_questions, train_query_encodings, train_gold_context_encodings, train_neg_context_encodings):
-    """
-    Function for generating a batch.
-    Inputs:
-        device - PyTorch device to train on
-        num_questions - Number of questions in the training set
-        train_query_encodings - Encodings of the training queries
-        train_gold_context_encodings - Encodings of the training gold contexts
-        train_neg_context_encodings - Encodings of the training negative contexts
-    Outputs:
-        context_input_ids_tensor - Tensor containing context input ids
-        context_attention_mask_tensor - Tensor containing context attention masks
-        query_input_ids - Tensor containing query input ids
-        query_attention_mask - Tensor containing query attention masks
-        true - Whether the context is positive or negative
-    """
-
-    true = [0, 2]
-    context_input_ids_tensor = []
-    context_attention_mask_tensor = []
-
-    # Selecting a random query with its positive context and negative context
-    idx = random.randint(0, num_questions-1)
-    gold_context_input_ids = train_gold_context_encodings['input_ids'][idx]
-    gold_context_attention_mask = train_gold_context_encodings['attention_mask'][idx]
-    context_input_ids_tensor.append(gold_context_input_ids)
-    context_attention_mask_tensor.append(gold_context_attention_mask)
-
-    query_input_ids = train_query_encodings['input_ids'][idx]
-    query_attention_mask = train_query_encodings['attention_mask'][idx]
-
-    neg_context_input_ids = train_neg_context_encodings['input_ids'][idx]
-    neg_context_attention_mask = train_neg_context_encodings['attention_mask'][idx]
-    context_input_ids_tensor.append(neg_context_input_ids)
-    context_attention_mask_tensor.append(neg_context_attention_mask)
-
-    # DEBUG
-    idx = random.randint(0, num_questions-1)
-    gold_context_input_ids = train_gold_context_encodings['input_ids'][idx]
-    gold_context_attention_mask = train_gold_context_encodings['attention_mask'][idx]
-    context_input_ids_tensor.append(gold_context_input_ids)
-    context_attention_mask_tensor.append(gold_context_attention_mask)
-
-    query_input_ids = train_query_encodings['input_ids'][idx]
-    query_attention_mask = train_query_encodings['attention_mask'][idx]
-
-    neg_context_input_ids = train_neg_context_encodings['input_ids'][idx]
-    neg_context_attention_mask = train_neg_context_encodings['attention_mask'][idx]
-    context_input_ids_tensor.append(neg_context_input_ids)
-    context_attention_mask_tensor.append(neg_context_attention_mask)
-
-    # Stack into tensors
-    context_input_ids_tensor = torch.stack(context_input_ids_tensor)
-    context_attention_mask_tensor = torch.stack(context_attention_mask_tensor)
-    query_input_ids = query_input_ids.unsqueeze(0)
-    query_attention_mask = query_attention_mask.unsqueeze(0)
-
-    # Return the context inputs and query inputs
-    return context_input_ids_tensor, context_attention_mask_tensor, query_input_ids, query_attention_mask, torch.tensor(true, device=device).unsqueeze(0)
-
-
-def perform_training_epoch(dpr_model, device, batch_size, optimizer, criterion, train_query_encodings, train_gold_context_encodings, train_neg_context_encodings):
+def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, criterion, num_questions):
     """
     Function that performs a single training epoch.
     Inputs:
         dpr_model - DPR model instance that is trained
         device - PyTorch device to train on
-        batch_size - Size of the training batches
+        dataloader - Dataloader instance containing the data
         optimizer - PyTorch optimizer instance
+        scheduler - PyTorch scheduler instance
         criterion - PyTorch loss function instance
-        train_query_encodings - Encodings of the training queries
-        train_gold_context_encodings - Encodings of the training gold contexts
-        train_neg_context_encodings - Encodings of the training negative contexts
+        num_questions - Total number of questions (dataset length)
     Outputs:
         epoch_loss - Average loss over the epoch
     """
 
     epoch_loss = 0
 
-    # Shuffle the data
-    train_query_encodings, train_gold_context_encodings, train_neg_context_encodings = shuffle_data(train_query_encodings, train_gold_context_encodings, train_neg_context_encodings)
-
-    # Calculate the number of batches
-    num_questions = len(train_gold_context_encodings['input_ids'])
-    num_batches = int(num_questions / batch_size) + (num_questions % batch_size > 0)
-
     # Loop over the batches
-    for i in range(1, num_batches + 1):
+    for batch_index, batch in enumerate(dataloader):
         # Remove gradients from the optimizer
         optimizer.zero_grad()
 
+        # Get the required variables from the batch
+        question_ids = batch['question_ids'].to(device)
+        question_mask = batch['question_mask'].to(device)
+        gold_context_ids = batch['gold_context_ids'].to(device)
+        gold_context_mask = batch['gold_context_mask'].to(device)
+        neg_context_ids = batch['neg_context_ids'].to(device)
+        neg_context_mask = batch['neg_context_mask'].to(device)
+
         # Forward the batch through the models
-        context_input_ids_tensor, context_attention_mask_tensor, query_input_ids, query_attention_mask, true = get_batch(device, num_questions, train_query_encodings, train_gold_context_encodings, train_neg_context_encodings)
-        pred = dpr_model(context_input_ids_tensor, context_attention_mask_tensor,query_input_ids,query_attention_mask)
+        pred = dpr_model(
+            torch.cat([gold_context_ids, neg_context_ids], dim=0).to(device),
+            torch.cat([gold_context_mask, neg_context_mask], dim=0).to(device),
+            question_ids,
+            question_mask,
+        )
+
+        # Create the truth labels
+        true = list(range(0, batch['question_ids'].size()[0]))
+        true = torch.tensor(true, device=device)
 
         # Calcualte the loss
-        print(pred.size())
-        print(true.size())
         loss = criterion(pred, true)
 
         # Backwards pass
         loss.backward()
         epoch_loss += loss.item()
         optimizer.step()
+        scheduler.step()
     
-    # Return the loss
+    # Return the average epoch loss
     return epoch_loss / num_questions
 
 
@@ -231,7 +195,7 @@ def train_model(args, device):
 
     # Load the dataset
     print('Loading data..')
-    train_questions, train_gold_contexts, train_neg_contexts = load_dataset(args, args.data_dir + train_filename)
+    train_dataset = load_dataset(args, args.data_dir + train_filename)
     print('Data loaded')
 
     # Load the model
@@ -239,10 +203,10 @@ def train_model(args, device):
     model_location, tokenizer_class = model_index[args.model]
     question_tokenizer = tokenizer_class.from_pretrained(model_location)
     question_encoder = DPRQuestionEncoder.from_pretrained('facebook/dpr-question_encoder-single-nq-base')
-    question_encoder.question_encoder.replace_bert(args.model, model_location)
+    question_encoder.question_encoder.replace_bert(args.model, model_location, args.dropout)
     context_tokenizer = tokenizer_class.from_pretrained(model_location)
     context_encoder = DPRContextEncoder.from_pretrained('facebook/dpr-ctx_encoder-single-nq-base')
-    context_encoder.ctx_encoder.replace_bert(args.model, model_location)
+    context_encoder.ctx_encoder.replace_bert(args.model, model_location, args.dropout)
     print('Model loaded')
 
     # Combine into a single DPR model
@@ -253,13 +217,33 @@ def train_model(args, device):
     dpr_model.to(device)
     dpr_model.train()
     criterion = nn.NLLLoss().to(device)
-    optimizer = torch.optim.AdamW(dpr_model.parameters(), lr = 10e-5)
+    optimizer = torch.optim.AdamW(dpr_model.parameters(), lr=args.lr, eps=1e-8)
+
+    # Create the linear learning rate scheduler
+    def lr_lambda(current_step):
+        current_step += steps_shift
+        if current_step < warmup_steps:
+            return float(current_step) / float(max(1, warmup_steps))
+        return max(
+            1e-7,
+            float(total_training_steps - current_step) / float(max(1, total_training_steps - warmup_steps)),
+        )
+    scheduler = LambdaLR(optimizer, lr_lambda, args.n_epochs)
 
     # Encode the training data
     print('Encoding training data..')
-    train_query_encodings = question_tokenizer(train_questions, truncation=True, padding='max_length', return_tensors = 'pt').to(device)
-    train_gold_context_encodings = context_tokenizer(train_gold_contexts, truncation=True, padding='max_length', return_tensors = 'pt').to(device)
-    train_neg_context_encodings = context_tokenizer(train_neg_contexts, truncation=True, padding='max_length', return_tensors = 'pt').to(device)
+    train_dataset = train_dataset.map(
+        lambda x: preprocess_dataset(
+            x,
+            question_tokenizer = question_tokenizer,
+            context_tokenizer = context_tokenizer,
+        ),
+        batched=False,
+    )
+    train_dataset.set_format(type='pt', columns=['question_ids', 'question_mask', 'gold_context_ids', 'gold_context_mask', 'neg_context_ids', 'neg_context_mask'])
+    len_dataset = len(train_dataset)
+    print(train_dataset)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     print('Training data encoded')
 
     # Train the model
@@ -268,12 +252,12 @@ def train_model(args, device):
         average_epoch_loss = perform_training_epoch(
             dpr_model = dpr_model,
             device = device,
-            batch_size = args.batch_size, 
-            optimizer = optimizer, 
+            dataloader = train_loader, 
+            optimizer = optimizer,
+            scheduler = scheduler, 
             criterion = criterion,
-            train_query_encodings = train_query_encodings,
-            train_gold_context_encodings = train_gold_context_encodings,
-            train_neg_context_encodings = train_neg_context_encodings)
+            num_questions = len_dataset,
+        )
         # Report on the loss
         print('Epoch : {}  Loss : {}'.format(epoch, average_epoch_loss))
     print('Training finished')
@@ -292,6 +276,9 @@ def main(args):
         args - Namespace object from the argument parser
     """
 
+    # Set a random seed
+    torch.seed()
+
     # Check if GPU is available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -299,15 +286,11 @@ def main(args):
     print('-----TRAINING PARAMETERS-----')
     print('Device: {}'.format(device))
     print('Model: {}'.format(args.model))
-    print('Max query length: {}'.format(args.max_seq_len_query))
-    print('Max context passage length: {}'.format(args.max_seq_len_passage))
+    print('Learning rate: {}'.format(args.lr))
+    print('Dropout rate: {}'.format(args.dropout))
     print('Num training epochs: {}'.format(args.n_epochs))
     print('Batch size: {}'.format(args.batch_size))
-    print('Gradient accumulation steps: {}'.format(args.grad_acc_steps))
     print('Model saving directory: {}'.format(args.save_dir))
-    print('Step interval for evaluation: {}'.format(args.evaluate_every))
-    print('Num positive contexts: {}'.format(args.num_positives))
-    print('Num negative contexts: {}'.format(args.num_hard_negatives))
     print('Embed title: {}'.format(not args.dont_embed_title))
     print('-----------------------------')
 
@@ -324,30 +307,24 @@ if __name__ == '__main__':
     parser.add_argument('--model', default='bert', type=str,
                         help='What model to use. Default is bert.',
                         choices=['bert', 'distilbert', 'electra'])
-    parser.add_argument('--max_seq_len_query', default=64, type=int,
-                        help='Maximum length of query sequence. Default is 64.')
-    parser.add_argument('--max_seq_len_passage', default=256, type=int,
-                        help='Maximum length of context passage. Default is 256.')
+    
+    # DPR hyperparameters
+    parser.add_argument('--dont_embed_title', action='store_true',
+                        help='Do not embed titles. Titles are embedded by default.')
 
     # Training hyperparameters
     parser.add_argument('--data_dir', default='data/downloads/data/retriever/', type=str,
                         help='Directory where the data is stored. Default is data/downloads/data/retriever/.')
+    parser.add_argument('--lr', default=1e-5, type=float,
+                        help='Learning rate to use during training. Default is 1e-5.')
+    parser.add_argument('--dropout', default=0.1, type=float,
+                        help='Dropout rate to use during training. Default is 0.1.')
     parser.add_argument('--n_epochs', default=2, type=int,
                         help='Number of epochs to train for. Default is 2.')
-    parser.add_argument('--batch_size', default=2, type=int,
-                        help='Training batch size. Default is 2.')
-    parser.add_argument('--grad_acc_steps', default=8, type=int,
-                        help='Number of gradient accumulation steps. Default is 8.')
+    parser.add_argument('--batch_size', default=4, type=int,
+                        help='Training batch size. Default is 4.')
     parser.add_argument('--save_dir', default='saved_models/', type=str,
                         help='Directory for saving the models. Default is saved_models/.')
-    parser.add_argument('--evaluate_every', default=3000, type=int,
-                        help='Step interval for evaluation. Default is 3000.')
-    parser.add_argument('--num_positives', default=1, type=int,
-                        help='Number of positive contexts per question. Default is 1.')
-    parser.add_argument('--num_hard_negatives', default=1, type=int,
-                        help='Number of negative contexts per question. Default is 1.')
-    parser.add_argument('--dont_embed_title', action='store_true',
-                        help='Do not embed titles. Titles are embedded by default.')
 
     # Parse the arguments
     args = parser.parse_args()

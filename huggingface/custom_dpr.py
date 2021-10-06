@@ -30,11 +30,11 @@ from transformers.file_utils import (
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
-from transformers.models.bert.modeling_bert import BertEncoder, BertModel
-from transformers.models.distilbert.modeling_distilbert import Transformer, DistilBertModel
-from transformers.models.electra.modeling_electra import ElectraEncoder, ElectraModel
+from transformers.models.bert.modeling_bert import BertEncoder, BertModel, BertConfig
+from transformers.models.distilbert.modeling_distilbert import Transformer, DistilBertModel, DistilBertConfig
+from transformers.models.electra.modeling_electra import ElectraEncoder, ElectraModel, ElectraConfig
 from transformers.models.dpr.configuration_dpr import DPRConfig
-from transformers import BertModel, DistilBertModel, ElectraModel
+#from transformers import BertModel, DistilBertModel, ElectraModel
 
 
 logger = logging.get_logger(__name__)
@@ -166,13 +166,25 @@ class DPREncoder(PreTrainedModel):
             self.encode_proj = nn.Linear(self.bert_model.config.hidden_size, config.projection_dim)
         self.init_weights()
 
-    def replace_bert(self, model_type, pretrained_location):
+    def replace_bert(self, model_type, pretrained_location, dropout=0):
         if model_type == 'bert':
-            self.bert_model = BertModel.from_pretrained(pretrained_location)
+            cfg = BertConfig.from_pretrained(pretrained_location)
+            if dropout != 0:
+                cfg.attention_probs_dropout_prob = dropout
+                cfg.hidden_dropout_prob = dropout
+            self.bert_model = BertModel.from_pretrained(pretrained_location, config=cfg)
         elif model_type == 'distilbert':
-            self.bert_model = DistilBertModel.from_pretrained(pretrained_location)
+            cfg = DistilBertConfig.from_pretrained(pretrained_location)
+            if dropout != 0:
+                cfg.attention_probs_dropout_prob = dropout
+                cfg.hidden_dropout_prob = dropout
+            self.bert_model = DistilBertModel.from_pretrained(pretrained_location, config=cfg)
         elif model_type == 'electra':
-            self.bert_model = ElectraModel.from_pretrained(pretrained_location)
+            cfg = ElectraConfig.from_pretrained(pretrained_location)
+            if dropout != 0:
+                cfg.attention_probs_dropout_prob = dropout
+                cfg.hidden_dropout_prob = dropout
+            self.bert_model = ElectraModel.from_pretrained(pretrained_location, config=cfg)
 
     def forward(
         self,
