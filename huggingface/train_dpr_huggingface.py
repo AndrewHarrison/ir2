@@ -4,10 +4,13 @@ import os
 import argparse
 import json
 import random
+from time import process_time
+import datetime
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.cuda import amp
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from transformers import BertTokenizer, DistilBertTokenizer, ElectraTokenizer
@@ -125,7 +128,7 @@ def load_dataset(args, path):
     return dataset
 
 
-def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, criterion, num_questions):
+def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, criterion, num_questions, scaler):
     """
     Function that performs a single training epoch.
     Inputs:
@@ -136,11 +139,16 @@ def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, 
         scheduler - PyTorch scheduler instance
         criterion - PyTorch loss function instance
         num_questions - Total number of questions (dataset length)
+        scaler - GradScaler instance for mixed precision
     Outputs:
         epoch_loss - Average loss over the epoch
+        time_elapsed - Time it took for the epoch to run
     """
 
     epoch_loss = 0
+
+    # Keep track of the time it takes to perform an epoch
+    time_start = process_time() 
 
     # Loop over the batches
     for batch_index, batch in enumerate(dataloader):
@@ -155,29 +163,35 @@ def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, 
         neg_context_ids = batch['neg_context_ids'].to(device)
         neg_context_mask = batch['neg_context_mask'].to(device)
 
-        # Forward the batch through the models
-        pred = dpr_model(
-            torch.cat([gold_context_ids, neg_context_ids], dim=0).to(device),
-            torch.cat([gold_context_mask, neg_context_mask], dim=0).to(device),
-            question_ids,
-            question_mask,
-        )
+        with amp.autocast():
+            # Forward the batch through the models
+            pred = dpr_model(
+                torch.cat([gold_context_ids, neg_context_ids], dim=0).to(device),
+                torch.cat([gold_context_mask, neg_context_mask], dim=0).to(device),
+                question_ids,
+                question_mask,
+            )
 
-        # Create the truth labels
-        true = list(range(0, batch['question_ids'].size()[0]))
-        true = torch.tensor(true, device=device)
+            # Create the truth labels
+            true = list(range(0, batch['question_ids'].size()[0]))
+            true = torch.tensor(true, device=device)
 
-        # Calcualte the loss
-        loss = criterion(pred, true)
+            # Calculate the loss
+            loss = criterion(pred, true)
 
         # Backwards pass
-        loss.backward()
+        scaler.scale(loss).backward()
         epoch_loss += loss.item()
-        optimizer.step()
+        scaler.step(optimizer)
         scheduler.step()
+        scaler.update()
     
-    # Return the average epoch loss
-    return epoch_loss / num_questions
+    # Calculate the time it takes to do an epoch
+    time_stop = process_time()
+    time_elapsed = time_stop - time_start
+    
+    # Return the average epoch loss and elapsed time
+    return epoch_loss / num_questions, time_elapsed
 
 
 def train_model(args, device):
@@ -186,8 +200,6 @@ def train_model(args, device):
     Inputs:
         args - Namespace object from the argument parser
         device - PyTorch device to train on
-    Outputs:
-        ?
     """
 
     train_filename = 'nq-train.json'
@@ -216,19 +228,8 @@ def train_model(args, device):
                 context_tokenizer = context_tokenizer)
     dpr_model.to(device)
     dpr_model.train()
-    criterion = nn.NLLLoss().to(device)
+    criterion = nn.NLLLoss(reduction="mean").to(device)
     optimizer = torch.optim.AdamW(dpr_model.parameters(), lr=args.lr, eps=1e-8)
-
-    # Create the linear learning rate scheduler
-    def lr_lambda(current_step):
-        current_step += steps_shift
-        if current_step < warmup_steps:
-            return float(current_step) / float(max(1, warmup_steps))
-        return max(
-            1e-7,
-            float(total_training_steps - current_step) / float(max(1, total_training_steps - warmup_steps)),
-        )
-    scheduler = LambdaLR(optimizer, lr_lambda, args.n_epochs)
 
     # Encode the training data
     print('Encoding training data..')
@@ -242,14 +243,26 @@ def train_model(args, device):
     )
     train_dataset.set_format(type='pt', columns=['question_ids', 'question_mask', 'gold_context_ids', 'gold_context_mask', 'neg_context_ids', 'neg_context_mask'])
     len_dataset = len(train_dataset)
-    print(train_dataset)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    num_batches = len(train_loader)
     print('Training data encoded')
 
+    # Create the linear learning rate scheduler
+    def lr_lambda(current_step):
+        return max(
+            1e-7,
+            float(num_batches * args.n_epochs - current_step) / float(max(1, num_batches * args.n_epochs)),
+        )
+    scheduler = LambdaLR(optimizer, lr_lambda, -1)
+
+    # Create the GradScaler for mixed precision
+    scaler = amp.GradScaler()
+
     # Train the model
+    total_training_time = 0
     print('Starting training..')
     for epoch in range(1, args.n_epochs + 1):
-        average_epoch_loss = perform_training_epoch(
+        average_epoch_loss, epoch_time = perform_training_epoch(
             dpr_model = dpr_model,
             device = device,
             dataloader = train_loader, 
@@ -257,10 +270,12 @@ def train_model(args, device):
             scheduler = scheduler, 
             criterion = criterion,
             num_questions = len_dataset,
+            scaler = scaler,
         )
+        total_training_time += epoch_time
         # Report on the loss
-        print('Epoch : {}  Loss : {}'.format(epoch, average_epoch_loss))
-    print('Training finished')
+        print('Epoch : {}  Loss : {} Elapsed time : {}'.format(epoch, average_epoch_loss, str(datetime.timedelta(seconds=epoch_time))))
+    print('Training finished. Total training time: {}'.format(str(datetime.timedelta(seconds=total_training_time))))
 
     # Save the model
     print('Saving model..')
@@ -276,8 +291,9 @@ def main(args):
         args - Namespace object from the argument parser
     """
 
-    # Set a random seed
-    torch.seed()
+    # Set a seed
+    torch.manual_seed(args.seed)
+    random.seed(args.seed)
 
     # Check if GPU is available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -292,6 +308,7 @@ def main(args):
     print('Batch size: {}'.format(args.batch_size))
     print('Model saving directory: {}'.format(args.save_dir))
     print('Embed title: {}'.format(not args.dont_embed_title))
+    print('Seed: {}'.format(args.seed))
     print('-----------------------------')
 
     # Start training
@@ -321,10 +338,12 @@ if __name__ == '__main__':
                         help='Dropout rate to use during training. Default is 0.1.')
     parser.add_argument('--n_epochs', default=2, type=int,
                         help='Number of epochs to train for. Default is 2.')
-    parser.add_argument('--batch_size', default=4, type=int,
-                        help='Training batch size. Default is 4.')
+    parser.add_argument('--batch_size', default=8, type=int,
+                        help='Training batch size. Default is 8.')
     parser.add_argument('--save_dir', default='saved_models/', type=str,
                         help='Directory for saving the models. Default is saved_models/.')
+    parser.add_argument('--seed', default=1234, type=int,
+                        help='Seed to use during training. Default is 1234.')
 
     # Parse the arguments
     args = parser.parse_args()

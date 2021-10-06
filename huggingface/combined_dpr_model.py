@@ -29,7 +29,7 @@ class DPR(nn.Module):
         self.question_tokenizer = question_tokenizer
         self.context_tokenizer = context_tokenizer
 
-        self.log_softmax = nn.LogSoftmax(dim=1)
+        self.log_softmax = nn.LogSoftmax(dim=-1)
 
 
     def get_context_vectors(self, context):
@@ -70,8 +70,10 @@ class DPR(nn.Module):
             c_vector - Vector for the context
         """
 
-        #q_vector = q_vector.unsqueeze(1)
-        sim = torch.matmul(q_vector, torch.transpose(c_vector, -2, -1))
+        # THILINA IMPLEMENTATION
+        sim = torch.matmul(q_vector, c_vector.t())
+        # OLD IMPLEMENTATION
+        #sim = torch.matmul(q_vector, torch.transpose(c_vector, -2, -1))
         return sim
 
 
