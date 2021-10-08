@@ -146,6 +146,7 @@ def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, 
     """
 
     epoch_loss = 0
+    epoch_correct = 0
 
     # Keep track of the time it takes to perform an epoch
     time_start = process_time() 
@@ -179,19 +180,28 @@ def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, 
             # Calculate the loss
             loss = criterion(pred, true)
 
+            # Calculate the number of correct labels
+            max_score, max_ids = torch.max(pred, 1)
+            correct_preds = (
+                (max_ids == true).sum().cpu().detach().numpy().item()
+            )
+            epoch_correct += correct_preds
+
         # Backwards pass
         scaler.scale(loss).backward()
         epoch_loss += loss.item()
         scaler.step(optimizer)
-        scheduler.step()
         scaler.update()
+
+    # Take a step with the learning rate scheduler    
+    scheduler.step()
     
     # Calculate the time it takes to do an epoch
     time_stop = process_time()
     time_elapsed = time_stop - time_start
     
-    # Return the average epoch loss and elapsed time
-    return epoch_loss / num_questions, time_elapsed
+    # Return the average epoch loss, epoch accuracy and elapsed time
+    return epoch_loss / num_questions, epoch_correct / num_questions, time_elapsed
 
 
 def train_model(args, device):
@@ -244,14 +254,13 @@ def train_model(args, device):
     train_dataset.set_format(type='pt', columns=['question_ids', 'question_mask', 'gold_context_ids', 'gold_context_mask', 'neg_context_ids', 'neg_context_mask'])
     len_dataset = len(train_dataset)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    num_batches = len(train_loader)
     print('Training data encoded')
 
     # Create the linear learning rate scheduler
-    def lr_lambda(current_step):
+    def lr_lambda(current_epoch):
         return max(
             1e-7,
-            float(num_batches * args.n_epochs - current_step) / float(max(1, num_batches * args.n_epochs)),
+            float(args.n_epochs - current_epoch) / float(max(1, args.n_epochs)),
         )
     scheduler = LambdaLR(optimizer, lr_lambda, -1)
 
@@ -262,7 +271,7 @@ def train_model(args, device):
     total_training_time = 0
     print('Starting training..')
     for epoch in range(1, args.n_epochs + 1):
-        average_epoch_loss, epoch_time = perform_training_epoch(
+        average_epoch_loss, epoch_accuracy, epoch_time = perform_training_epoch(
             dpr_model = dpr_model,
             device = device,
             dataloader = train_loader, 
@@ -274,7 +283,7 @@ def train_model(args, device):
         )
         total_training_time += epoch_time
         # Report on the loss
-        print('Epoch : {}  Loss : {} Elapsed time : {}'.format(epoch, average_epoch_loss, str(datetime.timedelta(seconds=epoch_time))))
+        print('Epoch : {}   Loss : {}   Accuracy: {}    Elapsed time : {}'.format(epoch, average_epoch_loss, epoch_accuracy, str(datetime.timedelta(seconds=epoch_time))))
     print('Training finished. Total training time: {}'.format(str(datetime.timedelta(seconds=total_training_time))))
 
     # Save the model
@@ -336,8 +345,8 @@ if __name__ == '__main__':
                         help='Learning rate to use during training. Default is 1e-5.')
     parser.add_argument('--dropout', default=0.1, type=float,
                         help='Dropout rate to use during training. Default is 0.1.')
-    parser.add_argument('--n_epochs', default=2, type=int,
-                        help='Number of epochs to train for. Default is 2.')
+    parser.add_argument('--n_epochs', default=4, type=int,
+                        help='Number of epochs to train for. Default is 4.')
     parser.add_argument('--batch_size', default=8, type=int,
                         help='Training batch size. Default is 8.')
     parser.add_argument('--save_dir', default='saved_models/', type=str,
