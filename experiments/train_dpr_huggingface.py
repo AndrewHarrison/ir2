@@ -28,14 +28,14 @@ model_index = {
 }
 
 
-def preprocess_dataset(dataset_instance, question_tokenizer, context_tokenizer):
+def preprocess_dataset(dataset_instance, question_tokenizer, context_tokenizer, max_seq_length):
     """
     Function for tokenizing the dataset, used with Huggingface map function.
     Inputs:
         dataset_instance - Instance from the Huggingface dataset
         question_tokenizer - Tokenizer instance to use for encoding the questions
         context_tokenizer - Tokenizer instance to use for encoding the contexts
-        dataset - HuggingFace dataset instance containing the data
+        max_seq_length - Maximum sequence length for truncation
     Outputs:
         dataset_instance - HuggingFace dataset instance augmented with encodings
     """
@@ -45,6 +45,7 @@ def preprocess_dataset(dataset_instance, question_tokenizer, context_tokenizer):
         dataset_instance['question'],
         padding='max_length',
         truncation=True,
+        max_length=max_seq_length,
         return_tensors='pt',
     )
     question_ids = question_inputs['input_ids'].squeeze()
@@ -55,6 +56,7 @@ def preprocess_dataset(dataset_instance, question_tokenizer, context_tokenizer):
         dataset_instance['gold_context'],
         padding='max_length',
         truncation=True,
+        max_length=max_seq_length,
         return_tensors='pt',
     )
     gold_ids = gold_inputs['input_ids'].squeeze()
@@ -65,6 +67,7 @@ def preprocess_dataset(dataset_instance, question_tokenizer, context_tokenizer):
         dataset_instance['neg_context'],
         padding='max_length',
         truncation=True,
+        max_length=max_seq_length,
         return_tensors='pt',
     )
     neg_ids = neg_inputs['input_ids'].squeeze()
@@ -248,6 +251,7 @@ def train_model(args, device):
             x,
             question_tokenizer = question_tokenizer,
             context_tokenizer = context_tokenizer,
+            max_seq_length = args.max_seq_length,
         ),
         batched=False,
     )
@@ -311,6 +315,7 @@ def main(args):
     print('-----TRAINING PARAMETERS-----')
     print('Device: {}'.format(device))
     print('Model: {}'.format(args.model))
+    print('Maximum sequence length: {}'.format(args.max_seq_length))
     print('Learning rate: {}'.format(args.lr))
     print('Dropout rate: {}'.format(args.dropout))
     print('Num training epochs: {}'.format(args.n_epochs))
@@ -333,6 +338,8 @@ if __name__ == '__main__':
     parser.add_argument('--model', default='bert', type=str,
                         help='What model to use. Default is bert.',
                         choices=['bert', 'distilbert', 'electra'])
+    parser.add_argument('--max_seq_length', default=256, type=int,
+                        help='Maximum sequence length. Default is 256.')
     
     # DPR hyperparameters
     parser.add_argument('--dont_embed_title', action='store_true',
