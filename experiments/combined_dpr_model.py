@@ -70,10 +70,7 @@ class DPR(nn.Module):
             c_vector - Vector for the context
         """
 
-        # THILINA IMPLEMENTATION
         sim = torch.matmul(q_vector, c_vector.t())
-        # OLD IMPLEMENTATION
-        #sim = torch.matmul(q_vector, torch.transpose(c_vector, -2, -1))
         return sim
 
 

@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from torch.cuda import amp
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-from transformers import BertTokenizer, DistilBertTokenizer, ElectraTokenizer
+from transformers import BertTokenizer, DistilBertTokenizer, ElectraTokenizer, DPRConfig
 from datasets import Dataset
 
 # Own imports
@@ -230,9 +230,11 @@ def train_model(args, device):
     question_tokenizer = tokenizer_class.from_pretrained(model_location)
     question_encoder = DPRQuestionEncoder.from_pretrained('facebook/dpr-question_encoder-single-nq-base')
     question_encoder.question_encoder.replace_bert(args.model, model_location, args.dropout)
+    question_encoder.set_projection_layer(args.embeddings_size)
     context_tokenizer = tokenizer_class.from_pretrained(model_location)
     context_encoder = DPRContextEncoder.from_pretrained('facebook/dpr-ctx_encoder-single-nq-base')
     context_encoder.ctx_encoder.replace_bert(args.model, model_location, args.dropout)
+    context_encoder.set_projection_layer(args.embeddings_size)
     print('Model loaded')
 
     # Combine into a single DPR model
@@ -317,6 +319,7 @@ def main(args):
     print('Device: {}'.format(device))
     print('Model: {}'.format(args.model))
     print('Maximum sequence length: {}'.format(args.max_seq_length))
+    print('Embeddings size: {}'.format(args.embeddings_size))
     print('Learning rate: {}'.format(args.lr))
     print('Dropout rate: {}'.format(args.dropout))
     print('Num training epochs: {}'.format(args.n_epochs))
@@ -338,9 +341,11 @@ if __name__ == '__main__':
     # Model hyperparameters
     parser.add_argument('--model', default='bert', type=str,
                         help='What model to use. Default is bert.',
-                        choices=['bert', 'distilbert', 'electra','tinybert'])
+                        choices=['bert', 'distilbert', 'electra', 'tinybert'])
     parser.add_argument('--max_seq_length', default=256, type=int,
                         help='Maximum sequence length. Default is 256.')
+    parser.add_argument('--embeddings_size', default=0, type=int,
+                        help='Size of the model embeddings. Default is 0 (standard model embeddings sizes).')
     
     # DPR hyperparameters
     parser.add_argument('--dont_embed_title', action='store_true',

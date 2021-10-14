@@ -19,36 +19,68 @@ from custom_dpr import DPRQuestionEncoder, DPRContextEncoder
 model_index = {
     'bert': ('bert-base-uncased', BertTokenizer),
     'distilbert': ('distilbert-base-uncased', DistilBertTokenizer),
-    'electra': ('google/electra-small-discriminator', ElectraTokenizer)
+    'electra': ('google/electra-small-discriminator', ElectraTokenizer),
+    'tinybert': ('huawei-noah/TinyBERT_General_4L_312D', BertTokenizer)
 }
 
 
-def preprocess_question_dataset(dataset_instance, question_tokenizer, max_seq_length):
+def preprocess_question_dataset(batch, question_tokenizer, question_encoder, max_seq_length):
     """
-    Function for tokenizing the question dataset, used with Huggingface map function.
+    Function for embedding the question dataset, used with Huggingface map function.
     Inputs:
-        dataset_instance - Instance from the Huggingface dataset
+        batch - Batch of questions from the Huggingface dataset
         question_tokenizer - Tokenizer instance to use for encoding the questions
+        question_encoder - Model for encoding the questions
         max_seq_length - Maximum sequence length for truncation
     Outputs:
-        dataset_instance - HuggingFace dataset instance augmented with encodings
+        dict - Dictionary object containing the new embeddings column
     """
 
-    # Encode the question
+    # Tokenize the question
     question_inputs = question_tokenizer(
-        dataset_instance['question'],
+        batch['question'],
         padding='max_length',
         truncation=True,
         max_length=max_seq_length,
         return_tensors='pt',
     )
-    question_ids = question_inputs['input_ids'].squeeze()
-    question_mask = question_inputs['attention_mask'].squeeze()
+    
+    # Embed the question
+    embeddings = question_encoder(**question_inputs)[0].detach().numpy() 
 
-    # Return the new columns
+    # Return the new column
     return {
-        'question_ids': question_ids,
-        'question_mask': question_mask
+        'embeddings': embeddings
+    }
+
+
+def preprocess_passage_dataset(batch, context_tokenizer, context_encoder, max_seq_length):
+    """
+    Function for embedding the passage dataset, used with Huggingface map function.
+    Inputs:
+        batch - Batch of questions from the Huggingface dataset
+        context_tokenizer - Tokenizer instance to use for encoding the contexts
+        context_encoder - Model for encoding the contexts
+        max_seq_length - Maximum sequence length for truncation
+    Outputs:
+        dict - Dictionary object containing the new embeddings column
+    """
+
+    # Tokenize the context
+    context_inputs = context_tokenizer(
+        batch['passage'],
+        padding='max_length',
+        truncation=True,
+        max_length=max_seq_length,
+        return_tensors='pt',
+    )
+    
+    # Embed the context
+    embeddings = context_encoder(**context_inputs)[0].detach().numpy() 
+
+    # Return the new column
+    return {
+        'embeddings': embeddings
     }
 
 
@@ -59,9 +91,8 @@ def load_dataset(args, path):
         args - Namespace object from the argument parser
         path - String representing the location of the .json file
     Outputs:
-        questions - List of questions from the dataset
-        gold_contexts - List of contexts that are the answer to the question
-        neg_contexts - List of contexts that are NOT the answer to the question
+        question_dataset - HuggingFace dataset instance containing questions and answer passage ids
+        passage_dataset - HuggingFace dataset instance containing passages with their passage ids 
     """
 
     # Read the file
@@ -171,9 +202,11 @@ def evaluate_model(args, device):
     question_tokenizer = tokenizer_class.from_pretrained(model_location)
     question_encoder = DPRQuestionEncoder.from_pretrained('facebook/dpr-question_encoder-single-nq-base')
     question_encoder.question_encoder.replace_bert(args.model, trained_location + 'question_encoder/', 0.0)
+    question_encoder.set_projection_layer(args.embeddings_size)
     context_tokenizer = tokenizer_class.from_pretrained(model_location)
     context_encoder = DPRContextEncoder.from_pretrained('facebook/dpr-ctx_encoder-single-nq-base')
     context_encoder.ctx_encoder.replace_bert(args.model, trained_location + 'context_encoder/', 0.0)
+    context_encoder.set_projection_layer(args.embeddings_size)
     print('Model loaded')
 
     # Set models to evaluation
@@ -183,7 +216,17 @@ def evaluate_model(args, device):
     # Encode the questions
     print('Encoding questions..')
     encode_question_time_start = time.time()
-    question_dataset = question_dataset.map(lambda example: {'embeddings': question_encoder(**question_tokenizer(example["question"], padding='max_length', truncation=True, max_length=args.max_seq_length, return_tensors="pt"))[0][0].detach().numpy()})
+    question_dataset = question_dataset.map(
+        lambda batch: preprocess_question_dataset(
+            batch,
+            question_tokenizer = question_tokenizer,
+            question_encoder = question_encoder,
+            max_seq_length = args.max_seq_length,
+        ),
+        batched = True,
+        batch_size = args.batch_size,
+        writer_batch_size = args.batch_size
+    )
     question_dataset.set_format(type='numpy', columns=['embeddings'], output_all_columns=True)
     encode_question_time_stop = time.time()
     encode_question_time_elapsed = encode_question_time_stop - encode_question_time_start
@@ -193,7 +236,17 @@ def evaluate_model(args, device):
     # Encode the passages
     print('Encoding passages..')
     encode_passage_time_start = time.time()
-    passage_dataset = passage_dataset.map(lambda example: {'embeddings': context_encoder(**context_tokenizer(example["passage"], padding='max_length', truncation=True, max_length=args.max_seq_length, return_tensors="pt"))[0][0].detach().numpy()})
+    passage_dataset = passage_dataset.map(
+        lambda batch: preprocess_passage_dataset(
+            batch,
+            context_tokenizer = context_tokenizer,
+            context_encoder = context_encoder,
+            max_seq_length = args.max_seq_length,
+        ),
+        batched = True,
+        batch_size = args.batch_size,
+        writer_batch_size = args.batch_size
+    )
     passage_dataset.set_format(type='numpy', columns=['embeddings'], output_all_columns=True)
     passage_dataset.add_faiss_index(column='embeddings')
     encode_passage_time_stop = time.time()
@@ -256,6 +309,7 @@ def main(args):
     # Set a seed
     torch.manual_seed(args.seed)
     random.seed(args.seed)
+    torch.set_grad_enabled(False)
 
     # Check if GPU is available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -266,6 +320,8 @@ def main(args):
     print('Model: {}'.format(args.model))
     print('Loading directory: {}'.format(args.load_dir + args.model))
     print('Maximum sequence length: {}'.format(args.max_seq_length))
+    print('Embeddings size: {}'.format(args.embeddings_size))
+    print('Batch size: {}'.format(args.batch_size))
     print('Model evaluation output directory: {}'.format(args.output_dir))
     print('Embed title: {}'.format(not args.dont_embed_title))
     print('Seed: {}'.format(args.seed))
@@ -283,11 +339,15 @@ if __name__ == '__main__':
     # Model hyperparameters
     parser.add_argument('--model', default='bert', type=str,
                         help='What model to use. Default is bert.',
-                        choices=['bert', 'distilbert', 'electra'])
+                        choices=['bert', 'distilbert', 'electra', 'tinybert'])
     parser.add_argument('--load_dir', default='saved_models/', type=str,
                         help='Directory for loading the trained models. Default is saved_models/.')
     parser.add_argument('--max_seq_length', default=256, type=int,
                         help='Maximum sequence length. Default is 256.')
+    parser.add_argument('--embeddings_size', default=0, type=int,
+                        help='Size of the model embeddings. Default is 0 (standard model embeddings sizes).')
+    parser.add_argument('--batch_size', default=256, type=int,
+                        help='Batch size to use for encoding questions and passages. Default is 256.')
     
     # DPR hyperparameters
     parser.add_argument('--dont_embed_title', action='store_true',

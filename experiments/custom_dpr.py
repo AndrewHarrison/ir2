@@ -185,6 +185,11 @@ class DPREncoder(PreTrainedModel):
                 cfg.attention_probs_dropout_prob = dropout
                 cfg.hidden_dropout_prob = dropout
             self.bert_model = ElectraModel.from_pretrained(pretrained_location, config=cfg)
+    
+    def set_projection_layer(projection_dim):
+        self.projection_dim = projection_dim
+        if self.projection_dim > 0:
+            self.encode_proj = nn.Linear(self.bert_model.config.hidden_size, config.projection_dim)
 
     def forward(
         self,
