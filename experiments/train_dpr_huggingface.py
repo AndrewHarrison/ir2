@@ -24,7 +24,8 @@ from combined_dpr_model import DPR
 model_index = {
     'bert': ('bert-base-uncased', BertTokenizer),
     'distilbert': ('distilbert-base-uncased', DistilBertTokenizer),
-    'electra': ('google/electra-small-discriminator', ElectraTokenizer)
+    'electra': ('google/electra-small-discriminator', ElectraTokenizer),
+    'tinybert': ('huawei-noah/TinyBERT_General_4L_312D', BertTokenizer)
 }
 
 
@@ -337,7 +338,7 @@ if __name__ == '__main__':
     # Model hyperparameters
     parser.add_argument('--model', default='bert', type=str,
                         help='What model to use. Default is bert.',
-                        choices=['bert', 'distilbert', 'electra'])
+                        choices=['bert', 'distilbert', 'electra','tinybert'])
     parser.add_argument('--max_seq_length', default=256, type=int,
                         help='Maximum sequence length. Default is 256.')
     
