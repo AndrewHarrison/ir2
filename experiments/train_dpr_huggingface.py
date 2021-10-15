@@ -264,10 +264,13 @@ def train_model(args, device):
     print('Training data encoded')
 
     # Create the linear learning rate scheduler
-    def lr_lambda(current_epoch):
+    total_training_steps = len(train_loader) * args.n_epochs
+    def lr_lambda(current_step):
+        if current_step < args.warmup_steps:
+            return float(current_step) / float(max(1, args.warmup_steps))
         return max(
             1e-7,
-            float(args.n_epochs - current_epoch) / float(max(1, args.n_epochs)),
+            float(total_training_steps - current_step) / float(max(1, total_training_steps - warmup_steps)),
         )
     scheduler = LambdaLR(optimizer, lr_lambda, -1)
 
@@ -321,6 +324,7 @@ def main(args):
     print('Maximum sequence length: {}'.format(args.max_seq_length))
     print('Embeddings size: {}'.format(args.embeddings_size))
     print('Learning rate: {}'.format(args.lr))
+    print('Warmup steps: {}'.format(args.warmup_steps))
     print('Dropout rate: {}'.format(args.dropout))
     print('Num training epochs: {}'.format(args.n_epochs))
     print('Batch size: {}'.format(args.batch_size))
@@ -356,6 +360,8 @@ if __name__ == '__main__':
                         help='Directory where the data is stored. Default is data/downloads/data/retriever/.')
     parser.add_argument('--lr', default=1e-5, type=float,
                         help='Learning rate to use during training. Default is 1e-5.')
+    parser.add_argument('--warmup_steps', default=100, type=int,
+                        help='Number of warmup steps. Default is 100.')
     parser.add_argument('--dropout', default=0.1, type=float,
                         help='Dropout rate to use during training. Default is 0.1.')
     parser.add_argument('--n_epochs', default=4, type=int,

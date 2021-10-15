@@ -11,6 +11,7 @@ import pandas as pd
 import torch
 from transformers import BertTokenizer, DistilBertTokenizer, ElectraTokenizer
 from datasets import Dataset
+import faiss
 
 # Own imports
 from custom_dpr import DPRQuestionEncoder, DPRContextEncoder
@@ -233,6 +234,12 @@ def evaluate_model(args, device):
     average_encode_question_time = encode_question_time_elapsed / len(question_dataset)
     print('Questions encoded. Elapsed time: {}'.format(str(datetime.timedelta(seconds=encode_question_time_elapsed))))
 
+    # FAISS index settings similar to DPR
+    vector_dim = context_encoder.ctx_encoder.bert_model.hidden_size
+    faiss_index = faiss.IndexHNSWFlat(vector_dim, 64, faiss.METRIC_INNER_PRODUCT)
+    faiss_index.hnsw.efSearch = 20
+    faiss_index.hnsw.efConstruction = 80
+
     # Encode the passages
     print('Encoding passages..')
     encode_passage_time_start = time.time()
@@ -248,7 +255,7 @@ def evaluate_model(args, device):
         writer_batch_size = args.batch_size
     )
     passage_dataset.set_format(type='numpy', columns=['embeddings'], output_all_columns=True)
-    passage_dataset.add_faiss_index(column='embeddings')
+    passage_dataset.add_faiss_index(custom_index=faiss_index, column='embeddings')
     encode_passage_time_stop = time.time()
     encode_passage_time_elapsed = encode_passage_time_stop - encode_passage_time_start
     average_encode_passage_time = encode_passage_time_elapsed / len(passage_dataset)
