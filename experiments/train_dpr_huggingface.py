@@ -230,11 +230,11 @@ def train_model(args, device):
     question_tokenizer = tokenizer_class.from_pretrained(model_location)
     question_encoder = DPRQuestionEncoder.from_pretrained('facebook/dpr-question_encoder-single-nq-base')
     question_encoder.question_encoder.replace_bert(args.model, model_location, args.dropout)
-    question_encoder.set_projection_layer(args.embeddings_size)
+    question_encoder.question_encoder.set_projection_layer(args.embeddings_size)
     context_tokenizer = tokenizer_class.from_pretrained(model_location)
     context_encoder = DPRContextEncoder.from_pretrained('facebook/dpr-ctx_encoder-single-nq-base')
     context_encoder.ctx_encoder.replace_bert(args.model, model_location, args.dropout)
-    context_encoder.set_projection_layer(args.embeddings_size)
+    context_encoder.ctx_encoder.set_projection_layer(args.embeddings_size)
     print('Model loaded')
 
     # Combine into a single DPR model

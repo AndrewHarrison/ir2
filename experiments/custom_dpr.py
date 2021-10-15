@@ -34,7 +34,7 @@ from transformers.models.bert.modeling_bert import BertEncoder, BertModel, BertC
 from transformers.models.distilbert.modeling_distilbert import Transformer, DistilBertModel, DistilBertConfig
 from transformers.models.electra.modeling_electra import ElectraEncoder, ElectraModel, ElectraConfig
 from transformers.models.dpr.configuration_dpr import DPRConfig
-#from transformers import BertModel, DistilBertModel, ElectraModel
+from transformers import AutoConfig, AutoModel
 
 
 logger = logging.get_logger(__name__)
@@ -185,8 +185,14 @@ class DPREncoder(PreTrainedModel):
                 cfg.attention_probs_dropout_prob = dropout
                 cfg.hidden_dropout_prob = dropout
             self.bert_model = ElectraModel.from_pretrained(pretrained_location, config=cfg)
+        elif model_type == 'tinybert':
+            cfg = AutoConfig.from_pretrained(pretrained_location)
+            if dropout != 0:
+                cfg.attention_probs_dropout_prob = dropout
+                cfg.hidden_dropout_prob = dropout
+            self.bert_model = AutoModel.from_pretrained(pretrained_location, config=cfg)
     
-    def set_projection_layer(projection_dim):
+    def set_projection_layer(self, projection_dim):
         self.projection_dim = projection_dim
         if self.projection_dim > 0:
             self.encode_proj = nn.Linear(self.bert_model.config.hidden_size, config.projection_dim)
