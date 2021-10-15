@@ -4,7 +4,7 @@ import os
 import argparse
 import json
 import random
-from time import process_time
+import time
 import datetime
 import pandas as pd
 import torch
@@ -153,7 +153,7 @@ def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, 
     epoch_correct = 0
 
     # Keep track of the time it takes to perform an epoch
-    time_start = process_time() 
+    time_start = time.time()
 
     # Loop over the batches
     for batch_index, batch in enumerate(dataloader):
@@ -201,7 +201,7 @@ def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, 
     scheduler.step()
     
     # Calculate the time it takes to do an epoch
-    time_stop = process_time()
+    time_stop = time.time()
     time_elapsed = time_stop - time_start
     
     # Return the average epoch loss, epoch accuracy and elapsed time
