@@ -197,8 +197,8 @@ def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, 
         scaler.step(optimizer)
         scaler.update()
 
-    # Take a step with the learning rate scheduler    
-    scheduler.step()
+        # Take a step with the learning rate scheduler    
+        scheduler.step()
     
     # Calculate the time it takes to do an epoch
     time_stop = time.time()
@@ -364,8 +364,8 @@ if __name__ == '__main__':
                         help='Number of warmup steps. Default is 100.')
     parser.add_argument('--dropout', default=0.1, type=float,
                         help='Dropout rate to use during training. Default is 0.1.')
-    parser.add_argument('--n_epochs', default=4, type=int,
-                        help='Number of epochs to train for. Default is 4.')
+    parser.add_argument('--n_epochs', default=40, type=int,
+                        help='Number of epochs to train for. Default is 40.')
     parser.add_argument('--batch_size', default=8, type=int,
                         help='Training batch size. Default is 8.')
     parser.add_argument('--save_dir', default='saved_models/', type=str,
