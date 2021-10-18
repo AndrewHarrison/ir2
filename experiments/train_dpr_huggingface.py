@@ -270,7 +270,7 @@ def train_model(args, device):
             return float(current_step) / float(max(1, args.warmup_steps))
         return max(
             1e-7,
-            float(total_training_steps - current_step) / float(max(1, total_training_steps - warmup_steps)),
+            float(total_training_steps - current_step) / float(max(1, total_training_steps - args.warmup_steps)),
         )
     scheduler = LambdaLR(optimizer, lr_lambda, -1)
 
@@ -300,6 +300,9 @@ def train_model(args, device):
     print('Saving model..')
     dpr_model.question_encoder.question_encoder.bert_model.save_pretrained(args.save_dir + args.model + '/question_encoder/')
     dpr_model.context_encoder.ctx_encoder.bert_model.save_pretrained(args.save_dir + args.model + '/context_encoder/')
+    if args.embeddings_size > 0:
+        torch.save(dpr_model.question_encoder.question_encoder.encode_proj.state_dict(), args.save_dir + args.model + '/question_encoder_projection/model_weights.pth')
+        torch.save(dpr_model.context_encoder.ctx_encoder.encode_proj.state_dict(), args.save_dir + args.model + '/context_encoder_projection/model_weights.pth')
     print('Model saved')
 
 

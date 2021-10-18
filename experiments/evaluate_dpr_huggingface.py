@@ -208,6 +208,9 @@ def evaluate_model(args, device):
     context_encoder = DPRContextEncoder.from_pretrained('facebook/dpr-ctx_encoder-single-nq-base')
     context_encoder.ctx_encoder.replace_bert(args.model, trained_location + 'context_encoder/', 0.0)
     context_encoder.ctx_encoder.set_projection_layer(args.embeddings_size)
+    if args.embeddings_size > 0:
+        question_encoder.question_encoder.encode_proj.load_state_dict(torch.load(args.model, trained_location + 'question_encoder_projection/model_weights.pth'))
+        context_encoder.ctx_encoder.encode_proj.load_state_dict(torch.load(args.model, trained_location + 'context_encoder_projection/model_weights.pth'))
     print('Model loaded')
 
     # Set models to evaluation
@@ -235,7 +238,10 @@ def evaluate_model(args, device):
     print('Questions encoded. Elapsed time: {}'.format(str(datetime.timedelta(seconds=encode_question_time_elapsed))))
 
     # FAISS index settings similar to DPR
-    vector_dim = context_encoder.ctx_encoder.bert_model.hidden_size
+    if embeddings_size > 0:
+        vector_dim = embeddings_size
+    else:
+        vector_dim = question_dataset[0]['embeddings'].size
     faiss_index = faiss.IndexHNSWFlat(vector_dim, 64, faiss.METRIC_INNER_PRODUCT)
     faiss_index.hnsw.efSearch = 20
     faiss_index.hnsw.efConstruction = 80

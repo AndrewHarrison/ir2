@@ -195,7 +195,7 @@ class DPREncoder(PreTrainedModel):
     def set_projection_layer(self, projection_dim):
         self.projection_dim = projection_dim
         if self.projection_dim > 0:
-            self.encode_proj = nn.Linear(self.bert_model.config.hidden_size, config.projection_dim)
+            self.encode_proj = nn.Linear(self.bert_model.config.hidden_size, self.projection_dim)
 
     def forward(
         self,
