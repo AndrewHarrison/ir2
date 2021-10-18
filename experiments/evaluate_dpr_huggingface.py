@@ -25,11 +25,12 @@ model_index = {
 }
 
 
-def preprocess_question_dataset(batch, question_tokenizer, question_encoder, max_seq_length):
+def preprocess_question_dataset(batch, device, question_tokenizer, question_encoder, max_seq_length):
     """
     Function for embedding the question dataset, used with Huggingface map function.
     Inputs:
         batch - Batch of questions from the Huggingface dataset
+        device - PyTorch device to encode on
         question_tokenizer - Tokenizer instance to use for encoding the questions
         question_encoder - Model for encoding the questions
         max_seq_length - Maximum sequence length for truncation
@@ -44,10 +45,10 @@ def preprocess_question_dataset(batch, question_tokenizer, question_encoder, max
         truncation=True,
         max_length=max_seq_length,
         return_tensors='pt',
-    )
+    ).to(device)
     
     # Embed the question
-    embeddings = question_encoder(**question_inputs)[0].detach().numpy() 
+    embeddings = question_encoder(**question_inputs)[0].cpu().detach().numpy() 
 
     # Return the new column
     return {
@@ -55,11 +56,12 @@ def preprocess_question_dataset(batch, question_tokenizer, question_encoder, max
     }
 
 
-def preprocess_passage_dataset(batch, context_tokenizer, context_encoder, max_seq_length):
+def preprocess_passage_dataset(batch, device, context_tokenizer, context_encoder, max_seq_length):
     """
     Function for embedding the passage dataset, used with Huggingface map function.
     Inputs:
         batch - Batch of questions from the Huggingface dataset
+        device - PyTorch device to encode on
         context_tokenizer - Tokenizer instance to use for encoding the contexts
         context_encoder - Model for encoding the contexts
         max_seq_length - Maximum sequence length for truncation
@@ -74,10 +76,10 @@ def preprocess_passage_dataset(batch, context_tokenizer, context_encoder, max_se
         truncation=True,
         max_length=max_seq_length,
         return_tensors='pt',
-    )
+    ).to(device)
     
     # Embed the context
-    embeddings = context_encoder(**context_inputs)[0].detach().numpy() 
+    embeddings = context_encoder(**context_inputs)[0].cpu().detach().numpy() 
 
     # Return the new column
     return {
@@ -209,8 +211,10 @@ def evaluate_model(args, device):
     context_encoder.ctx_encoder.replace_bert(args.model, trained_location + 'context_encoder/', 0.0)
     context_encoder.ctx_encoder.set_projection_layer(args.embeddings_size)
     if args.embeddings_size > 0:
-        question_encoder.question_encoder.encode_proj.load_state_dict(torch.load(args.model, trained_location + 'question_encoder_projection/model_weights.pth'))
-        context_encoder.ctx_encoder.encode_proj.load_state_dict(torch.load(args.model, trained_location + 'context_encoder_projection/model_weights.pth'))
+        question_encoder.question_encoder.encode_proj.load_state_dict(torch.load(args.model, trained_location + 'question_encoder_projection.pth'))
+        context_encoder.ctx_encoder.encode_proj.load_state_dict(torch.load(args.model, trained_location + 'context_encoder_projection.pth'))
+    question_encoder.to(device)
+    context_encoder.to(device)
     print('Model loaded')
 
     # Set models to evaluation
@@ -223,13 +227,14 @@ def evaluate_model(args, device):
     question_dataset = question_dataset.map(
         lambda batch: preprocess_question_dataset(
             batch,
+            device = device,
             question_tokenizer = question_tokenizer,
             question_encoder = question_encoder,
             max_seq_length = args.max_seq_length,
         ),
         batched = True,
         batch_size = args.batch_size,
-        writer_batch_size = args.batch_size
+        #writer_batch_size = args.batch_size
     )
     question_dataset.set_format(type='numpy', columns=['embeddings'], output_all_columns=True)
     encode_question_time_stop = time.time()
@@ -238,13 +243,13 @@ def evaluate_model(args, device):
     print('Questions encoded. Elapsed time: {}'.format(str(datetime.timedelta(seconds=encode_question_time_elapsed))))
 
     # FAISS index settings similar to DPR
-    if embeddings_size > 0:
+    if args.embeddings_size > 0:
         vector_dim = embeddings_size
     else:
         vector_dim = question_dataset[0]['embeddings'].size
-    faiss_index = faiss.IndexHNSWFlat(vector_dim, 64, faiss.METRIC_INNER_PRODUCT)
-    faiss_index.hnsw.efSearch = 20
-    faiss_index.hnsw.efConstruction = 80
+    faiss_index = faiss.IndexHNSWFlat(vector_dim, 512, faiss.METRIC_INNER_PRODUCT)
+    faiss_index.hnsw.efSearch = 128
+    faiss_index.hnsw.efConstruction = 200
 
     # Encode the passages
     print('Encoding passages..')
@@ -252,13 +257,14 @@ def evaluate_model(args, device):
     passage_dataset = passage_dataset.map(
         lambda batch: preprocess_passage_dataset(
             batch,
+            device = device,
             context_tokenizer = context_tokenizer,
             context_encoder = context_encoder,
             max_seq_length = args.max_seq_length,
         ),
         batched = True,
         batch_size = args.batch_size,
-        writer_batch_size = args.batch_size
+        #writer_batch_size = args.batch_size
     )
     passage_dataset.set_format(type='numpy', columns=['embeddings'], output_all_columns=True)
     passage_dataset.add_faiss_index(custom_index=faiss_index, column='embeddings')
@@ -359,8 +365,8 @@ if __name__ == '__main__':
                         help='Maximum sequence length. Default is 256.')
     parser.add_argument('--embeddings_size', default=0, type=int,
                         help='Size of the model embeddings. Default is 0 (standard model embeddings sizes).')
-    parser.add_argument('--batch_size', default=256, type=int,
-                        help='Batch size to use for encoding questions and passages. Default is 256.')
+    parser.add_argument('--batch_size', default=512, type=int,
+                        help='Batch size to use for encoding questions and passages. Default is 512.')
     
     # DPR hyperparameters
     parser.add_argument('--dont_embed_title', action='store_true',

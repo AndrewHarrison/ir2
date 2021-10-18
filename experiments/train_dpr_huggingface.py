@@ -301,8 +301,8 @@ def train_model(args, device):
     dpr_model.question_encoder.question_encoder.bert_model.save_pretrained(args.save_dir + args.model + '/question_encoder/')
     dpr_model.context_encoder.ctx_encoder.bert_model.save_pretrained(args.save_dir + args.model + '/context_encoder/')
     if args.embeddings_size > 0:
-        torch.save(dpr_model.question_encoder.question_encoder.encode_proj.state_dict(), args.save_dir + args.model + '/question_encoder_projection/model_weights.pth')
-        torch.save(dpr_model.context_encoder.ctx_encoder.encode_proj.state_dict(), args.save_dir + args.model + '/context_encoder_projection/model_weights.pth')
+        torch.save(dpr_model.question_encoder.question_encoder.encode_proj.state_dict(), args.save_dir + args.model + '/question_encoder_projection.pth')
+        torch.save(dpr_model.context_encoder.ctx_encoder.encode_proj.state_dict(), args.save_dir + args.model + '/context_encoder_projection.pth')
     print('Model saved')
 
 
