@@ -200,7 +200,7 @@ def evaluate_model(args, device):
 
     # Load the model
     print('Loading model..')
-    trained_location = args.load_dir + args.model + str(args.max_seq_length) + "/"
+    trained_location = args.load_dir + args.model + str(args.max_seq_length) + "_" + str(args.embeddings_size) + "/"
     model_location, tokenizer_class = model_index[args.model]
     question_tokenizer = tokenizer_class.from_pretrained(model_location)
     question_encoder = DPRQuestionEncoder.from_pretrained('facebook/dpr-question_encoder-single-nq-base')
@@ -234,7 +234,6 @@ def evaluate_model(args, device):
         ),
         batched = True,
         batch_size = args.batch_size,
-        #writer_batch_size = args.batch_size
     )
     question_dataset.set_format(type='numpy', columns=['embeddings'], output_all_columns=True)
     encode_question_time_stop = time.time()
@@ -264,7 +263,6 @@ def evaluate_model(args, device):
         ),
         batched = True,
         batch_size = args.batch_size,
-        #writer_batch_size = args.batch_size
     )
     passage_dataset.set_format(type='numpy', columns=['embeddings'], output_all_columns=True)
     passage_dataset.add_faiss_index(custom_index=faiss_index, column='embeddings')
