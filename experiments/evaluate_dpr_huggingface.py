@@ -12,6 +12,7 @@ import torch
 from transformers import BertTokenizer, DistilBertTokenizer, ElectraTokenizer
 from datasets import Dataset
 import faiss
+import resource
 
 # Own imports
 from custom_dpr import DPRQuestionEncoder, DPRContextEncoder
@@ -265,10 +266,13 @@ def evaluate_model(args, device):
         batch_size = args.batch_size,
     )
     passage_dataset.set_format(type='numpy', columns=['embeddings'], output_all_columns=True)
+    ram_usage_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     passage_dataset.add_faiss_index(custom_index=faiss_index, column='embeddings')
+    ram_usage_after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     encode_passage_time_stop = time.time()
     encode_passage_time_elapsed = encode_passage_time_stop - encode_passage_time_start
     average_encode_passage_time = encode_passage_time_elapsed / len(passage_dataset)
+    ram_usage_change = ram_usage_after - ram_usage_before
     print('Passages encoded. Elapsed time: {}'.format(str(datetime.timedelta(seconds=encode_passage_time_elapsed))))
 
     # Evaluate the model
@@ -303,14 +307,15 @@ def evaluate_model(args, device):
     mean_inference_time = np.mean(inference_times)
     std_inference_time = np.std(inference_times)
     print('Evaluation finished.')
+    print('FAISS RAM usage: {}'.format(ram_usage_change))
     print('Inference time.    Average: {}    Std: {}'.format(mean_inference_time, std_inference_time))
     print('Accuracy@1: {}    Accuracy@20: {}    Accuracy@100: {}    MRR: {}'.format(top_1_acc, top_20_acc, top_100_acc, total_mrr))
 
     # Save the results
     print('Saving results..')
     df = pd.DataFrame(
-        [[average_encode_question_time, average_encode_passage_time, mean_inference_time, std_inference_time, top_1_acc, top_20_acc, top_100_acc, total_mrr]], 
-        columns=['Mean encode question time', 'Mean encode passage time', 'Mean inference time', 'Std inference time', 'Acc@1', 'Acc@20', 'Acc@100', 'MRR']
+        [[ram_usage_change, average_encode_question_time, average_encode_passage_time, mean_inference_time, std_inference_time, top_1_acc, top_20_acc, top_100_acc, total_mrr]], 
+        columns=['FAISS RAM usage', 'Mean encode question time', 'Mean encode passage time', 'Mean inference time', 'Std inference time', 'Acc@1', 'Acc@20', 'Acc@100', 'MRR']
     )
     df.to_csv(args.output_dir + args.model + str(args.max_seq_length) + '_metrics.csv')
     print('Results saved')
