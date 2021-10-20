@@ -317,7 +317,7 @@ def evaluate_model(args, device):
         [[ram_usage_change, average_encode_question_time, average_encode_passage_time, mean_inference_time, std_inference_time, top_1_acc, top_20_acc, top_100_acc, total_mrr]], 
         columns=['FAISS RAM usage', 'Mean encode question time', 'Mean encode passage time', 'Mean inference time', 'Std inference time', 'Acc@1', 'Acc@20', 'Acc@100', 'MRR']
     )
-    df.to_csv(args.output_dir + args.model + str(args.max_seq_length) + '_metrics.csv')
+    df.to_csv(args.output_dir + args.model + str(args.max_seq_length) "_" + str(args.embeddings_size) + '_metrics.csv')
     print('Results saved')
 
 
