@@ -212,8 +212,8 @@ def evaluate_model(args, device):
     context_encoder.ctx_encoder.replace_bert(args.model, trained_location + 'context_encoder/', 0.0)
     context_encoder.ctx_encoder.set_projection_layer(args.embeddings_size)
     if args.embeddings_size > 0:
-        question_encoder.question_encoder.encode_proj.load_state_dict(torch.load(args.model, trained_location + 'question_encoder_projection.pth'))
-        context_encoder.ctx_encoder.encode_proj.load_state_dict(torch.load(args.model, trained_location + 'context_encoder_projection.pth'))
+        question_encoder.question_encoder.encode_proj.load_state_dict(torch.load(trained_location + 'question_encoder_projection.pth'))
+        context_encoder.ctx_encoder.encode_proj.load_state_dict(torch.load(trained_location + 'context_encoder_projection.pth'))
     question_encoder.to(device)
     context_encoder.to(device)
     print('Model loaded')
@@ -244,7 +244,7 @@ def evaluate_model(args, device):
 
     # FAISS index settings similar to DPR
     if args.embeddings_size > 0:
-        vector_dim = embeddings_size
+        vector_dim = args.embeddings_size
     else:
         vector_dim = question_dataset[0]['embeddings'].size
     faiss_index = faiss.IndexHNSWFlat(vector_dim, 512, faiss.METRIC_INNER_PRODUCT)
@@ -317,7 +317,7 @@ def evaluate_model(args, device):
         [[ram_usage_change, average_encode_question_time, average_encode_passage_time, mean_inference_time, std_inference_time, top_1_acc, top_20_acc, top_100_acc, total_mrr]], 
         columns=['FAISS RAM usage', 'Mean encode question time', 'Mean encode passage time', 'Mean inference time', 'Std inference time', 'Acc@1', 'Acc@20', 'Acc@100', 'MRR']
     )
-    df.to_csv(args.output_dir + args.model + str(args.max_seq_length) "_" + str(args.embeddings_size) + '_metrics.csv')
+    df.to_csv(args.output_dir + args.model + str(args.max_seq_length) + "_" + str(args.embeddings_size) + '_metrics.csv')
     print('Results saved')
 
 
