@@ -94,19 +94,19 @@ usage: train_dpr.py [-h] [--model MODEL] [--max_seq_length MAX_SEQ_LENGTH] [--em
                         [--seed SEED]
 
 optional arguments:
-  -h, --help            			Show help message and exit.
-  --model MODEL			          What encoder model to use. Options: ['bert', 'distilbert', 'electra', 'tinybert']. Default is 'bert'.
-  --max_seq_length MAX_SEQ_LENGTH   Maximum tokenized sequence length. Default is 256.
-  --embeddings_size EMBEDDINGS_SIZE   Size of the model embeddings. Default is 0 (standard model embeddings sizes).
-  --dont_embed_title                Do not embed passage titles. Titles are embedded by default.
-  --data_dir DATA_DIR               Directory where the data is stored. Default is data/downloads/data/retriever/.
-  --lr LR                           Learning rate to use during training. Default is 1e-5.
-  --warmup_steps WARMUP_STEPS       Number of warmup steps. Default is 100.
-  --dropout DROPOUT                 Dropout rate to use during training. Default is 0.1.
-  --n_epochs N_EPOCHS               Number of epochs to train for. Default is 40.
-  --batch_size BATCH_SIZE           Training batch size. Default is 16.
-  --save_dir SAVE_DIR               Directory for saving the models. Default is saved_models/.
-  --seed SEED                       Seed to use during training. Default is 1234.
+  -h, --help                            Show help message and exit.
+  --model MODEL                         What encoder model to use. Options: ['bert', 'distilbert', 'electra', 'tinybert']. Default is 'bert'.
+  --max_seq_length MAX_SEQ_LENGTH       Maximum tokenized sequence length. Default is 256.
+  --embeddings_size EMBEDDINGS_SIZE     Size of the model embeddings. Default is 0 (standard model embeddings sizes).
+  --dont_embed_title                    Do not embed passage titles. Titles are embedded by default.
+  --data_dir DATA_DIR                   Directory where the data is stored. Default is data/downloads/data/retriever/.
+  --lr LR                               Learning rate to use during training. Default is 1e-5.
+  --warmup_steps WARMUP_STEPS           Number of warmup steps. Default is 100.
+  --dropout DROPOUT                     Dropout rate to use during training. Default is 0.1.
+  --n_epochs N_EPOCHS                   Number of epochs to train for. Default is 40.
+  --batch_size BATCH_SIZE               Training batch size. Default is 16.
+  --save_dir SAVE_DIR                   Directory for saving the models. Default is saved_models/.
+  --seed SEED                           Seed to use during training. Default is 1234.
 ```
 
 The DPR models can be evaluated using the following command line arguments:
@@ -117,16 +117,16 @@ usage: evaluate_dpr.py [-h] [--model MODEL] [--load_dir LOAD_DIR] [--max_seq_len
                         [--data_dir DATA_DIR] [--output_dir OUTPUT_DIR] [--seed SEED]
 
 optional arguments:
-  -h, --help            			Show help message and exit.
-  --model MODEL			          What encoder model to use. Options: ['bert', 'distilbert', 'electra', 'tinybert']. Default is 'bert'.
-  --load_dir LOAD_DIR               Directory for loading the trained models. Default is saved_models/.
-  --max_seq_length MAX_SEQ_LENGTH   Maximum tokenized sequence length. Default is 256.
-  --embeddings_size EMBEDDINGS_SIZE   Size of the model embeddings. Default is 0 (standard model embeddings sizes).
-  --batch_size BATCH_SIZE           Batch size to use for encoding questions and passages. Default is 512.
-  --dont_embed_title                Do not embed passage titles. Titles are embedded by default.
-  --data_dir DATA_DIR               Directory where the data is stored. Default is data/downloads/data/retriever/.
-  --output_dir OUTPUT_DIR           Directory for saving the model evaluation metrics. Default is evaluation_outputs/.
-  --seed SEED                       Seed to use during training. Default is 1234.
+  -h, --help                            Show help message and exit.
+  --model MODEL                         What encoder model to use. Options: ['bert', 'distilbert', 'electra', 'tinybert']. Default is 'bert'.
+  --load_dir LOAD_DIR                   Directory for loading the trained models. Default is saved_models/.
+  --max_seq_length MAX_SEQ_LENGTH       Maximum tokenized sequence length. Default is 256.
+  --embeddings_size EMBEDDINGS_SIZE     Size of the model embeddings. Default is 0 (standard model embeddings sizes).
+  --batch_size BATCH_SIZE               Batch size to use for encoding questions and passages. Default is 512.
+  --dont_embed_title                    Do not embed passage titles. Titles are embedded by default.
+  --data_dir DATA_DIR                   Directory where the data is stored. Default is data/downloads/data/retriever/.
+  --output_dir OUTPUT_DIR               Directory for saving the model evaluation metrics. Default is evaluation_outputs/.
+  --seed SEED                           Seed to use during training. Default is 1234.
 ```
 
 ## Authors
