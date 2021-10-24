@@ -2,7 +2,7 @@
 
 #SBATCH --partition=gpu_shared_course
 #SBATCH --gres=gpu:1
-#SBATCH --job-name=IR2_Model_Evaluation
+#SBATCH --job-name=IR2_NQ_Download
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=3
 #SBATCH --time=3:00:00

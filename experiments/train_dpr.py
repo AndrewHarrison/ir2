@@ -38,7 +38,7 @@ def preprocess_dataset(dataset_instance, question_tokenizer, context_tokenizer, 
         context_tokenizer - Tokenizer instance to use for encoding the contexts
         max_seq_length - Maximum sequence length for truncation
     Outputs:
-        dataset_instance - HuggingFace dataset instance augmented with encodings
+        dict - Dictionary object containing the new columns
     """
 
     # Encode the question
@@ -92,9 +92,7 @@ def load_dataset(args, path):
         args - Namespace object from the argument parser
         path - String representing the location of the .json file
     Outputs:
-        questions - List of questions from the dataset
-        gold_contexts - List of contexts that are the answer to the question
-        neg_contexts - List of contexts that are NOT the answer to the question
+        dataset - Dataset containing the questions with their gold and negative contexts
     """
 
     # Read the file
@@ -146,6 +144,7 @@ def perform_training_epoch(dpr_model, device, dataloader, optimizer, scheduler, 
         scaler - GradScaler instance for mixed precision
     Outputs:
         epoch_loss - Average loss over the epoch
+        epoch_accuracy - Fraction of correct classifications (as answer or no answer)
         time_elapsed - Time it took for the epoch to run
     """
 
@@ -347,16 +346,16 @@ if __name__ == '__main__':
 
     # Model hyperparameters
     parser.add_argument('--model', default='bert', type=str,
-                        help='What model to use. Default is bert.',
+                        help='What encoder model to use. Default is bert.',
                         choices=['bert', 'distilbert', 'electra', 'tinybert'])
     parser.add_argument('--max_seq_length', default=256, type=int,
-                        help='Maximum sequence length. Default is 256.')
+                        help='Maximum tokenized sequence length. Default is 256.')
     parser.add_argument('--embeddings_size', default=0, type=int,
                         help='Size of the model embeddings. Default is 0 (standard model embeddings sizes).')
     
     # DPR hyperparameters
     parser.add_argument('--dont_embed_title', action='store_true',
-                        help='Do not embed titles. Titles are embedded by default.')
+                        help='Do not embed passage titles. Titles are embedded by default.')
 
     # Training hyperparameters
     parser.add_argument('--data_dir', default='data/downloads/data/retriever/', type=str,
@@ -369,8 +368,8 @@ if __name__ == '__main__':
                         help='Dropout rate to use during training. Default is 0.1.')
     parser.add_argument('--n_epochs', default=40, type=int,
                         help='Number of epochs to train for. Default is 40.')
-    parser.add_argument('--batch_size', default=8, type=int,
-                        help='Training batch size. Default is 8.')
+    parser.add_argument('--batch_size', default=16, type=int,
+                        help='Training batch size. Default is 16.')
     parser.add_argument('--save_dir', default='saved_models/', type=str,
                         help='Directory for saving the models. Default is saved_models/.')
     parser.add_argument('--seed', default=1234, type=int,

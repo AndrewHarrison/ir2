@@ -56,9 +56,8 @@ def load_dataset(args, path):
         args - Namespace object from the argument parser
         path - String representing the location of the .json file
     Outputs:
-        questions - List of questions from the dataset
-        gold_contexts - List of contexts that are the answer to the question
-        neg_contexts - List of contexts that are NOT the answer to the question
+        questions_dataset - Dataset containing the questions
+        passage_dataset - Dataset containing all passages
     """
 
     # Read the file
@@ -133,10 +132,6 @@ def perform_analysis(args, device):
         batched=False,
     )
     train_questions_dataframe = train_questions.to_pandas()
-    ###############Add by shuai
-    train_questions_dataframe.to_csv("length_csv/"+str(args.model)+"train_questions_dataframe.csv",index=False)
-        
-        
     train_passages = train_passages.map(
         lambda x: preprocess_dataset(
             x,
@@ -146,8 +141,6 @@ def perform_analysis(args, device):
         batched=False,
     )
     train_passages_dataframe = train_passages.to_pandas()
-    ###############Add by shuai
-    train_passages_dataframe.to_csv("length_csv/"+str(args.model)+"train_passages_dataframe.csv",index=False)
     print('Training data lengths calculated')
 
     # Encode the dev data
@@ -161,9 +154,6 @@ def perform_analysis(args, device):
         batched=False,
     )
     dev_questions_dataframe = dev_questions.to_pandas()
-    ###############Add by shuai
-    dev_questions_dataframe.to_csv("length_csv/"+str(args.model)+"dev_questions_dataframe.csv",index=False)
-    
     dev_passages = dev_passages.map(
         lambda x: preprocess_dataset(
             x,
@@ -174,17 +164,17 @@ def perform_analysis(args, device):
     )
     dev_passages_dataframe = dev_passages.to_pandas()
     print('Dev data lengths calculated')
-     ###############Add by shuai
+
+    # Save all dataframes to csv files
+    train_questions_dataframe.to_csv("length_csv/"+str(args.model)+"train_questions_dataframe.csv",index=False)
+    train_passages_dataframe.to_csv("length_csv/"+str(args.model)+"train_passages_dataframe.csv",index=False)
+    dev_questions_dataframe.to_csv("length_csv/"+str(args.model)+"dev_questions_dataframe.csv",index=False)
     dev_passages_dataframe.to_csv("length_csv/"+str(args.model)+"dev_passages_dataframe.csv",index=False)
-    
-
-
-    # TODO: DO ANALYSIS HERE 
 
 
 def main(args):
     """
-    Function for handling the arguments and starting the training.
+    Function for handling the arguments and starting the data analysis.
     Inputs:
         args - Namespace object from the argument parser
     """
@@ -231,5 +221,5 @@ if __name__ == '__main__':
     # Parse the arguments
     args = parser.parse_args()
 
-    # Do data analysis
+    # Perform data analysis
     main(args)

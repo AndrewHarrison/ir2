@@ -360,12 +360,12 @@ if __name__ == '__main__':
 
     # Model hyperparameters
     parser.add_argument('--model', default='bert', type=str,
-                        help='What model to use. Default is bert.',
+                        help='What encoder model to use. Default is bert.',
                         choices=['bert', 'distilbert', 'electra', 'tinybert'])
     parser.add_argument('--load_dir', default='saved_models/', type=str,
                         help='Directory for loading the trained models. Default is saved_models/.')
     parser.add_argument('--max_seq_length', default=256, type=int,
-                        help='Maximum sequence length. Default is 256.')
+                        help='Maximum tokenized sequence length. Default is 256.')
     parser.add_argument('--embeddings_size', default=0, type=int,
                         help='Size of the model embeddings. Default is 0 (standard model embeddings sizes).')
     parser.add_argument('--batch_size', default=512, type=int,
