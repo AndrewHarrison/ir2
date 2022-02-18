@@ -1,7 +1,5 @@
 # ir2
 
-Project for Information Retrieval 2 (second year master AI @ UvA)
-
 This repository contains research on efficient Dense Passage Retrieval (DPR). We research the effects of replacing the default BERT encoder models with smaller models (DistilBERT, TinyBERT, and ELECTRA) and the effects of using different embedding sizes. We evaluate on the retrieval performance on the Natural Questions (NQ) dataset.
 
 ## Content
@@ -131,9 +129,7 @@ optional arguments:
 
 ## Authors
 
-- Luuk Kaandorp - luuk.kaandorp@student.uva.nl
-- Andrew Harrison - andrew.harrison@student.uva.nl
-- Shuai Wang - shuai.wang@student.uva.nl
+- deleted for blind submission
 
 ## Acknowledgements
 
