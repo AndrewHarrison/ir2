@@ -1,4 +1,4 @@
-# ir2
+# Improving Efficiency in Dense Passage Retrieval
 
 This repository contains research on efficient Dense Passage Retrieval (DPR). We research the effects of replacing the default BERT encoder models with smaller models (DistilBERT, TinyBERT, and ELECTRA) and the effects of using different embedding sizes. We evaluate on the retrieval performance on the Natural Questions (NQ) dataset.
 
